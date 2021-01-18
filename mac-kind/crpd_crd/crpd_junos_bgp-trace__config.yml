@@ -1,0 +1,7 @@
+apiVersion: junos.config/v1
+kind: CrpdConfig
+metadata:
+  name: bgp-trace-log
+  namespace: kube-system
+spec:
+  config: "set protocols bgp traceoptions file bgp.log"

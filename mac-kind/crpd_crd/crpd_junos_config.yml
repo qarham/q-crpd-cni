@@ -1,0 +1,8 @@
+apiVersion: junos.config/v1
+kind: CrpdConfig
+metadata:
+  name: autonomous-system
+  namespace: kube-system
+spec:
+  config: "set routing-options autonomous-system 64512"
+

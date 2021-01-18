@@ -1,0 +1,11 @@
+apiVersion: junos.config/v1
+kind: CrpdConfig
+metadata:
+  name: autonomous-system
+  namespace: kube-system
+spec:
+  config: "set routing-instances slice-1 instance-type vrf;
+          set routing-instances slice-1 vrf-target target:1:2;
+          set routing-instances slice-1 route-distinguisher 1.2.3.4:0;
+          set policy-options policy-statement import-from-r1 term 1 from instance slice-1;
+          set policy-options policy-statement import-from-r1 term 1 then accept"

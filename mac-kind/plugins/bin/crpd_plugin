@@ -1,0 +1,62 @@
+#!/bin/bash -e
+
+if [[ ${DEBUG} -gt 0 ]]; then set -x; fi
+env >> /var/log/crpd-meta-plugin.log
+exec 3>&1 # make stdout available as fd 3 for the result
+exec &>> /var/log/crpd-meta-plugin.log
+
+
+#echo "CNI command: $CNI_COMMAND"
+
+config_string=`cat /dev/stdin`
+echo "stdin: $config_string"
+
+case $CNI_COMMAND in
+ADD)
+veth_string=`echo $config_string| grep -Eo '"name"[^,]*' | grep -Eo '[^:]*veth.*$'| sed -e 's/^"//' -e 's/"$//'`
+gw_address_v4=`echo $config_string| grep -Eo '"gateway"[^}]*' | grep -Eo '[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*"$'| sed -e 's/"$//'`
+gw_address_v6=`echo $config_string| grep -Eo '"gateway"[^}]*' | grep -Eo '2001:.*"$'| sed -e 's/"$//'`
+old_gw_address_v4="$gw_address_v4/32"
+old_gw_address_v6="$gw_address_v6/128"
+new_gw_address_v4="$gw_address_v4/24"
+new_gw_address_v6="$gw_address_v6/64"
+vrf=`echo $config_string| grep -Eo '"vrf"[^,]*'|grep -oP '(?<=:").*(?=")'`
+rd=`echo $config_string| grep -Eo '"rd"[^,]*'|grep -oP '(?<=:").*(?=")'`
+rt=`echo $config_string| grep -Eo '"rt"[^,]*'|grep -oP '(?<=:").*(?=")'`
+#echo "veth_string: $veth_string"
+#echo "gw_address: $gw_address_v4"
+#echo "new_gw_address: $new_gw_address_v4"
+#echo "gw_address: $gw_address_v6"
+#echo "new_gw_address: $new_gw_address_v6"
+ip addr del $old_gw_address_v4 dev $veth_string
+ip addr add $new_gw_address_v4 dev $veth_string
+ip -6 addr del $old_gw_address_v6 dev $veth_string
+ip -6 addr add $new_gw_address_v6 dev $veth_string
+#echo "set system host-name $veth_string" > /etc/crpd/vrf_ce_interface
+#veth_string="veth500"
+python3 /etc/crpd/junos_config.py add $veth_string $vrf $rd $rt
+echo $config_string >&3
+;;
+
+DEL)
+python3 /etc/crpd/junos_config.py delete $vrf
+;;
+
+GET)
+        echo "GET is not implemented"
+        exit 1
+;;
+
+VERSION)
+echo '{
+  "cniVersion": "0.3.1",
+  "supportedVersions": [ "0.3.0", "0.3.1", "0.4.0" ]
+}' >&3
+;;
+
+*)
+  echo "Unknown cni commandn: $CNI_COMMAND"
+  exit 1
+;;
+
+esac

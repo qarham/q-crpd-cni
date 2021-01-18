@@ -1,0 +1,618 @@
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: crpd
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - list
+      - watch
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: crpd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: crpd
+subjects:
+- kind: ServiceAccount
+  name: crpd
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: crpd
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: crpd-configmap
+  namespace: kube-system
+data:
+  RR_IPV4: "100.1.1.1"
+  RR_IPV6: "2001:db8:100:1::1"
+  SYSLOG_SERVER: "1.2.3.4"
+  AS_NUM: "64512"
+  bgp-template-master.j2: |
+    system {
+        host-name crpd_master;
+        root-authentication {
+            encrypted-password "$6$o9Y1i$UnJaPMGUuYJ7fdPLv02XBwPrkbKyGHVaFhBD6K.6nBr283RZ0YibvlPRUbudWsBZZYZCbsqv3Xbaw8OuL3GVw."; ## SECRET-DATA
+        }
+        services {
+            ssh {
+                root-login allow;
+                port {{sshport}};
+            }
+            extension-service {
+                request-response {
+                    grpc {
+                        clear-text {
+                            address 0.0.0.0;
+                            port {{grpcport}};
+                        }
+                        max-connections 8;
+                        skip-authentication;
+                    }
+                }
+                notification {
+                    port {{notificationport}};
+                    allow-clients {
+                        address 0.0.0.0/0;
+                    }
+                }
+            }
+            netconf {
+                ssh {
+                    port {{netconfport}};
+                }
+            }
+        }
+        license {
+            keys {
+                key "{{license}}";
+            }
+        }
+    }
+    interfaces {
+        lo0 {
+            unit 0 {
+                family iso {
+                    address {{loopback.iso}};
+                }
+            }
+        }
+    }
+    routing-options {
+        autonomous-system {{asnum}};
+        rib inet.3 {
+            static {
+                route 0.0.0.0/0 discard;
+            }
+        }
+        rib inet6.3 {
+            static {
+                route ::/0 discard;
+            }
+        }
+    }
+    protocols {
+        bgp {
+            group INTERNAL {
+                type internal;
+                local-address {{loopback.ipv4}};
+                family inet-vpn {
+                    unicast;
+                }
+                cluster {{loopback.ipv4}};
+                allow 0.0.0.0/0;
+            }
+            group INTERNALv6 {
+                type internal;
+                local-address {{loopback.ipv6}};
+                family inet6-vpn {
+                    unicast;
+                }
+                cluster {{loopback.ipv4}};
+                allow ::/0;
+            }
+        }
+        isis {
+    {%- filter indent(4) %}
+        {% for core_int in coreintf -%}
+            interface {{core_int}};
+        {% endfor -%}
+    {% endfilter -%}
+            interface lo.0 {
+                passive;
+            }
+            interface lo0.0 {
+                passive;
+            }
+            level 1 disable;
+        }
+    }
+#immutable: true
+  bgp-template-worker.j2: |
+    system {
+        host-name crpd_worker;
+        root-authentication {
+            encrypted-password "$6$o9Y1i$UnJaPMGUuYJ7fdPLv02XBwPrkbKyGHVaFhBD6K.6nBr283RZ0YibvlPRUbudWsBZZYZCbsqv3Xbaw8OuL3GVw."; ## SECRET-DATA
+        }
+        services {
+            ssh {
+                root-login allow;
+                port {{sshport}};
+            }
+            extension-service {
+                request-response {
+                    grpc {
+                        clear-text {
+                            address 0.0.0.0;
+                            port {{grpcport}};
+                        }
+                        max-connections 8;
+                        skip-authentication;
+                    }
+                }
+                notification {
+                    port {{notificationport}};
+                    allow-clients {
+                        address 0.0.0.0/0;
+                    }
+                }
+            }
+            netconf {
+                ssh {
+                    port {{netconfport}};
+                }
+            }
+        }
+        license {
+            keys {
+                key "{{license}}";
+            }
+        }
+    }
+    interfaces {
+        lo0 {
+            unit 0 {
+                family iso {
+                    address {{loopback.iso}};
+                }
+            }
+        }
+    }
+    routing-options {
+        autonomous-system {{asnum}};
+    }
+    protocols {
+        bgp {
+            group INTERNAL {
+                type internal;
+                local-address {{loopback.ipv4}};
+                family inet-vpn {
+                    unicast;
+                }
+    {%- filter indent(4) %}
+            {% for rr_address in rrv4 -%}
+                neighbor {{rr_address}};
+            {% endfor -%}
+    {% endfilter -%}
+            }
+            group INTERNALv6 {
+                type internal;
+                local-address {{loopback.ipv6}};
+                family inet6-vpn {
+                    unicast;
+                }
+    {%- filter indent(4) %}
+            {% for rr_address in rrv6 -%}
+                neighbor {{rr_address}};
+            {% endfor -%}
+    {% endfilter -%}
+            }
+        }
+        isis {
+    {%- filter indent(4) %}
+        {% for core_int in coreintf -%}
+            interface {{core_int}};
+        {% endfor -%}
+    {% endfilter -%}
+            interface lo.0 {
+                passive;
+            }
+            interface lo0.0 {
+                passive;
+            }
+            source-packet-routing {
+                adjacency-segment hold-time 180000;
+                srgb start-label 4000 index-range 40000;
+                node-segment {
+                    ipv4-index {{isis.ipv4index}};
+                    ipv6-index {{isis.ipv6index}};
+                }
+            }
+            level 1 disable;
+        }
+        mpls {
+    {%- filter indent(4) %}
+        {% for core_int in coreintf -%}
+            interface {{core_int}};
+        {% endfor -%}
+    {% endfilter -%}
+        }
+    }
+  cni-template.j2: |
+      {
+          "cniVersion": "0.4.0",
+          "name": "{{name}}",
+          "plugins": [
+            {
+              "type": "ptp",
+              "ipMasq": false,
+              "ipam": {
+                      "type": "host-local",
+                      "ranges": [
+                              [{ "subnet": "{{subnetipv4}}"}],
+                              [{ "subnet": "{{subnetipv6}}"}]
+                      ],
+                      "routes": [
+                      {%- filter indent(4) %}
+                          {% for prefix in routesipv4 -%}
+                              { "dst": "{{prefix.dst}}", "gw": "{{prefix.gw}}" },
+                          {% endfor -%}
+                          {% for prefix in routesipv6 -%}
+                              { "dst": "{{prefix.dst}}", "gw": "{{prefix.gw}}" }
+                              {{- ", " if not loop.last }}
+                          {% endfor -%}
+                      {% endfilter -%}
+                       ]
+              }
+            },
+            {
+              "type": "{{plugin}}",
+              "vrf": "{{vrf.name}}",
+              "rd": "{{vrf.rd}}",
+              "rt": "{{vrf.rt}}"
+            }
+          ]
+      }
+  nodes.yml: |
+      nodes:
+          q-k8s-csr-control-plane:
+              sshport: 6001
+              grpcport: 50051
+              notificationport: 1883
+              netconfport: 6002
+              loopback:
+                ipv6: 2001:db8:100:1::1
+                ipv4: 100.1.1.1
+                iso : 49.0001.0001.0001.00
+              coreintf:
+                - eth0
+              route: 2001:db8:1::/64
+          q-k8s-csr-worker:
+              sshport: 6001
+              grpcport: 50051
+              notificationport: 1883
+              netconfport: 6002
+              loopback:
+                ipv6: 2001:db8:100:1::2
+                ipv4: 100.1.1.2
+                iso : 49.0001.0001.0002.00
+              coreintf:
+                - eth0
+              isis:
+                ipv4index: 2001
+                ipv6index: 2002
+              routes:
+                - 2001:db8:2::/64
+              cni:
+                - name: netattach1
+                  subnetipv4: 10.1.1.0/24
+                  subnetipv6: 2001:db8:1::0/64
+                  routesipv4:
+                    - dst: "10.1.2.0/24"
+                      gw: "10.1.1.1"
+                  routesipv6:
+                    - dst: "2001:db8:2::/64"
+                      gw: "2001:db8:1::1"
+                  plugin: crpd_plugin
+                  vrf:
+                    name: VRF1
+                    rd: 100.1.1.2:64512
+                    rt: target:1:1
+          q-k8s-csr-worker2:
+              sshport: 6001
+              grpcport: 50051
+              notificationport: 1883
+              netconfport: 6002
+              loopback:
+                ipv6: 2001:db8:100:1::3
+                ipv4: 100.1.1.3
+                iso : 49.0001.0001.0003.00
+              coreintf:
+                - eth0
+              isis:
+                ipv4index: 3001
+                ipv6index: 3002
+              routes:
+                - 2001:db8:2::/64
+              cni:
+                - name: netattach1
+                  subnetipv4: 10.1.2.0/24
+                  subnetipv6: 2001:db8:2::0/64
+                  routesipv4:
+                    - dst: "10.1.1.0/24"
+                      gw: "10.1.2.1"
+                  routesipv6:
+                    - dst: "2001:db8:1::/64"
+                      gw: "2001:db8:2::1"
+                  plugin: crpd_plugin
+                  vrf:
+                    name: VRF1
+                    rd: 100.1.1.3:64512
+                    rt: target:1:1
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-crpd-worker-ds
+  namespace: kube-system
+  labels:
+    k8s-app: kube-crpd-worker
+spec:
+  selector:
+    matchLabels:
+      name: kube-crpd-worker-ds
+  template:
+    metadata:
+      labels:
+        name: kube-crpd-worker-ds
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                      - linux
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values:
+                      - amd64
+                  - key: "node-role.kubernetes.io/master"
+                    operator: DoesNotExist
+      hostNetwork: true
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      initContainers:
+        - name: install-cni
+          image: crpd_secondary_cni:latest
+          imagePullPolicy: Never
+          volumeMounts:
+          - name: cni
+            mountPath: /host
+          - name: config-volume
+            mountPath: /config-configmap
+          - name: cni-volume
+            mountPath: /cni-configmap
+          - name: node-volume
+            mountPath: /node-configmap
+#            readOnly: true
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+                - SYS_ADMIN
+          env:
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: IS_MASTER
+              value: "False"
+            - name: RR_IPV4
+              valueFrom:
+                configMapKeyRef:
+                  key: RR_IPV4
+                  name: crpd-configmap
+            - name: RR_IPV6
+              valueFrom:
+                configMapKeyRef:
+                  key: RR_IPV6
+                  name: crpd-configmap
+            - name: AS_NUM
+              valueFrom:
+                configMapKeyRef:
+                  key: AS_NUM
+                  name: crpd-configmap
+#            - name: RR_IPV4
+#              value: "100.1.1.1 100.1.1.2"
+#            - name: RR_IPV6
+#              value: "2001:db8:100:1::1 2001:db8:100:1::2"
+          envFrom:
+            - secretRef:
+                name: crpd-license
+          #image: crpd_cni:latest
+          #imagePullPolicy: Never
+          #command: ['sh', '-c', "brctl addbr crpdbr"]
+          #securityContext:
+          #privileged: true
+          #capabilities:
+          #  add:
+          #    - NET_ADMIN
+          #    - NET_RAW
+          #    - SYS_ADMIN
+      containers:
+        - name: kube-crpd-worker
+          image: crpd:latest
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: conf
+              mountPath: /config
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["NET_ADMIN"]
+          env:
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: IS_MASTER
+              value: "False"
+      volumes:
+        - name: cni
+          hostPath:
+            path: /
+        - name: conf
+          hostPath:
+            path: /etc/crpd
+        - name: config-volume
+          configMap:
+            name: crpd-configmap
+            items:
+            - key: bgp-template-worker.j2
+              path: bgp-template-worker.j2
+        - name: cni-volume
+          configMap:
+            name: crpd-configmap
+            items:
+            - key: cni-template.j2
+              path: cni-template.j2
+        - name: node-volume
+          configMap:
+            name: crpd-configmap
+            items:
+            - key: nodes.yml
+              path: nodes.yml
+      serviceAccountName: crpd
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-crpd-master-ds
+  namespace: kube-system
+  labels:
+    k8s-app: kube-crpd-master
+spec:
+  selector:
+    matchLabels:
+      name: kube-crpd-master-ds
+  template:
+    metadata:
+      labels:
+        name: kube-crpd-master-ds
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
+      hostNetwork: true
+      #nodeSelector:
+      #  node-role.kubernetes.io/master: ""
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoSchedule
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+      initContainers:
+        - name: install-cni
+          image: crpd_secondary_cni:latest
+          imagePullPolicy: Never
+          volumeMounts:
+          - name: cni
+            mountPath: /host
+          - name: config-volume
+            mountPath: /config-configmap
+          - name: node-volume
+            mountPath: /node-configmap
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["NET_ADMIN"]
+          env:
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: IS_MASTER
+              value: "True"
+            - name: AS_NUM
+              valueFrom:
+                configMapKeyRef:
+                  key: AS_NUM
+                  name: crpd-configmap
+          envFrom:
+            - secretRef:
+                name: crpd-license
+      containers:
+        - name: kube-crpd-master
+          image: crpd:latest
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: conf
+              mountPath: /config
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["NET_ADMIN"]
+          env:
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: IS_MASTER
+              value: "True"
+      volumes:
+        - name: cni
+          hostPath:
+            path: /
+        - name: conf
+          hostPath:
+            path: /etc/crpd
+        - name: config-volume
+          configMap:
+            name: crpd-configmap
+            items:
+            - key: bgp-template-master.j2
+              path: bgp-template-master.j2
+        - name: node-volume
+          configMap:
+            name: crpd-configmap
+            items:
+            - key: nodes.yml
+              path: nodes.yml
+      serviceAccountName: crpd
+---
+apiVersion: v1
+data:
+ CRPDLICENSE: MTkgMjQzIE5pIExPTkcgTk9STUFMIFNUQU5EQUxPTkUgQUdHUiAxX0tFWVMgSU5GSU5JVEVfS0VZUyA4IEpVTiAyMDIwIDAgMCA4IEpVTiAyMDIxIDAgMCBOaUwgU0xNX0NPREUgREVNTyBOaUwgTmlMIE5pIE5pTCBOaUwgMTVfTUlOUyBOaUwgMCBMWDg2SHpvc3U5UmxnNVVNdVk5U1o3eFNGc1JVMFExY1FNRXFES0xiMG5haEVpSzRKQ1ExblZVRmNrWHd2aVJQTmgvMFBvOStodlVNcmU5NWU5aGNQVDh1MDNGeFZKNUQwakR1QzFralQxaDVudEZTRVk4bTd4Z09ieXJSMVB2bnpkbUlSTFhFQ2ErbzRtSGJKeWh6TDMrRm44NktNWXIwVkx2QWRjUk84UUtoclBTVlhIaUhFdEFTRm1TMDZERlNWRXdoWjhvMTRuZXo1WHJCdUR0WXFCR1JLejR4TzhOU3p6UG01K1pwZms2NnRjOGhmVjZUcVdlTEJvVWd4UHJhYnJDNXRTZFVBalFTb2t4Qld2aGVNSTNhR3E5dGtBMU5adURRSUhsMUxUemVGZE1tVVlxbElRVUd1a0xEMjZGM1RvYi94bktQOW1TeWI4YWM0ME8vaWxGNFB3VjhwWWV2WFdIYWFMWFBVSjBIQUdWV3Y1OE1UdGZiUE5SaHhPZG9uYzFPUTFVcEQrRWxwa2tmbVVMWFB0akhiUnJ3N3dwTTVZWTRNYzZlU0FlVWdNcjhLaTB1Z3ZxUE9lWGp0M3VneVRWZWl4cVVZWjVHQWJHWjBacHhHaEE1UnYrc2ZwZ1ppWnFYZ1orTEFZNzRoRUkzME84N0wvYitmQ1R4R0lPQ0pVOFFFUU5EeDlMQXllRUJhV2pldWJTVWJ0L1VZZjhvTTRWY25VcVQxdVBUUWYwM0I5cHRQb05jcmd3cFBNOGVYS3gxWk9GcXdmZUlFSkZkTExqOC9BVUVVa05DTWd1RENRVUVVa05DTWdZQkFRY0JBUVFsT0dJeFlqWm1NV1F0TXpjMk9TMDBaalJsTFdJek9EY3RNelJsTXpKbFpUazJNMkprQUFnQkFRbEFwY25TS1ZHWXVwL0k4eUN6cTFUMm9PZlZ6UXdJczZXSEpPdklIT0xpMzBTRTh4cG5VRXluMnZWTlN2QVJvODMyMTlFdU1BZzJZWnVKWWVlWG42UzExUXFDRGpDQ0FRb0NnZ0VCQU5qaklCRWtJZFg4K0M0MTJkRXBnN0t6eGlkbkFlYzFPQWo3RUprSTlCWTU0MUdIeGVOWnd4anVqdUpxU0o4dVZrOHhTV0VxZXRlOWZhR2NneEZiQ1dHY0o2aXR6YzhyTURRVlk5d3FraDhkeDZTZ3J0WjZnRGRiQXUvWVc4V3R5N0c3eG10dWR0bzdUTTRhM2V4ZHpIY25CbnNHdGp0T3RLNndjL1dhNk1ZcTZoK21jZUk1c3hVU1c0R1YrMUZEaWJNRnQyK1hFeXBUc2wvMkdKZGEwQ0tHbWZuOVdMUkdpRVIwUEkvWS9GNS94dUFFOVY0MEJUaC9XSDZOL1R6eEVScTliQWhqaUpTcVdGbVNZVCtpOXg2aURCZHRyYkFGaVMxWkRpRHdyaVB6MmFaT1ZUSm1HYUJkeWpIYU9aRW53RTRLTFZ1cm40YWtqVW00VWVwN3U0c0NBd0VBQVFRbE9HSXhZalptTVdRdE16YzJPUzAwWmpSbExXSXpPRGN0TXpSbE16SmxaVGsyTTJKa0FBY0JBUXlDQUkvOUJsMFVodUVXWUhNNHFuWmpiaGdLeFNiTTF3Tk5iOGJoazFFdFhWSTNYOUR5Z2JkSzZmL2RpOUVxRGozRTAvM3JsWFdoU1NBbm5LaVllWXFqQVFCTFN3TU5ud25sUjFra0RrSGNvOTNYTFlTb1FWUFpLNGNtM2ZURVB1bWJJdFUxRVhqaXFpNGs3cnB1NmVpQThsUjZpQ0VnSHhJYUJPNDlnT09PcHRTWHlUamRQQzdveEs1dTNObi9UeFdDTkJURzQ2SEFVN3FMUjlvS21ucGtUeG5hbXJHQkQ5bWo2em5ZLzIwSGhoSzhQbU5sbEM2NUQyTVVMSWl3OEU4M0p4SE13NXBrUjZ0SVE3d25RZ0xObXlmS3RBaFhzelYxaVVVaHdhbmVHVVZyMzRQRXdnc2loYXhVaXFpNVIva2dJTTZsdmc5RFkzKzVLci9PNFlsYy8wTUFBQUsvI0tleVR5cGU9RGVtb0xhYiNBSUQ9ZmFhZjJkMzctZDliYy00NTJiLTkyYjEtZDBkNTAwNTM1NWJiIFNJR049MDcyOEFDMTFGOUVDRTFFMjQ5OTY3NDI4RjhDOUQzMUI1QzRERkZGMDIzNkZCQzlFNTZGNjdEMDBEM0ExMDlFQTYzNjhGM0FBQzBGQkNCNERDOUQy
+kind: Secret
+metadata:
+  creationTimestamp: null
+  name: crpd-license
+  namespace: kube-system

@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crpd-operator
+  namespace: kube-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      application: crpd-operator
+  template:
+    metadata:
+      labels:
+        application: crpd-operator
+    spec:
+      serviceAccountName: crpd-account
+      containers:
+      - name: crpd-crd
+        image: crpd_crd_new:latest
+        imagePullPolicy: Never
+
