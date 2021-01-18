@@ -24,9 +24,51 @@ multipass shell k8s-csr
 ```
 
 * [Docker Installation](https://docs.docker.com/engine/install/ubuntu/)
+
+```bash
+# Update the apt package index and install packages to allow apt to use a repository over HTTPS:
+sudo apt-get update
+sudo apt-get install \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg-agent \
+    software-properties-common
+
+#Add Docker’s official GPG key:
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+
+#Use the following command to set up the stable repository
+sudo add-apt-repository \
+   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+   $(lsb_release -cs) \
+   stable"
+
+# Install Docker
+sudo apt-get update
+sudo apt-get install docker-ce docker-ce-cli containerd.io
+
+# Check Docker Version
+docker version
+```   
+
 * [Kind Intallation](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
+
+```bash
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.9.0/kind-linux-amd64
+chmod +x ./kind
+mv ./kind /user/local/bin/kind
+kind version
+```
+
 * [Kubectl Installation](https://kubernetes.io/docs/tasks/tools/install-kubectl/#install-using-other-package-management)
 
+```bash
+snap install kubectl --classic
+
+# Check kubectl version
+kubectl version --client
+```
 
 Install Linux generic module for cRPD Kernel Forwarding Plane
 
@@ -43,7 +85,7 @@ lsmod | grep mpls
 ```bash
 # Git Clone the Repo
 cd /root
-git clone https://github.com/qarham/q-k8s.git
+git clone https://github.com/qarham/q-crpd-cni.git
 
 # Create KIND Cluster
 cd mac-kind

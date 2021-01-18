@@ -15,17 +15,17 @@ nodes:
 - role: control-plane
   image: qarham/kindest-node:v1.19
   extraMounts:
-  - hostPath: /root/q-k8s/mac-kind/plugins/bin
+  - hostPath: /root/q-crpd-cni/mac-kind/plugins/bin
     containerPath: /opt/cni/bin
 - role: worker
   image: qarham/kindest-node:v1.19
   extraMounts:
-  - hostPath: /root/q-k8s/mac-kind/plugins/bin
+  - hostPath: /root/q-crpd-cni/mac-kind/plugins/bin
     containerPath: /opt/cni/bin
 - role: worker
   image: qarham/kindest-node:v1.19
   extraMounts:
-  - hostPath: /root/q-k8s/mac-kind/plugins/bin
+  - hostPath: /root/q-crpd-cni/mac-kind/plugins/bin
     containerPath: /opt/cni/bin
 networking:
   disableDefaultCNI: true # disable kindnet
