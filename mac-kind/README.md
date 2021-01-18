@@ -195,7 +195,7 @@ Please update 'crpd_cni_seconday.yml' last section with ' CPRDLICENSE' Data copi
 
 ```bash
 cd workload-test-1
-vi crpd_cni_secondary.yml   # Updated the CRPDLICENSE with the Token Key copied earlier and Save the file
+vi crpd_cni_secondary.yml   # Updated the CRPDLICENSE with the Token Key copied earlier at the end of the file and Save the file
 
 # Create cRPD CNI using following commad
 kubectl apply -f crpd_cni_secondary.yml
@@ -215,6 +215,9 @@ The first step is label our 'k8s-wokrer' nodes.
 kubectl get nodes --show-labels
 kubectl label nodes q-k8s-csr-worker site=edc
 kubectl label nodes q-k8s-csr-worker2 site=cell
+
+# Verify Lavbles wth following command
+kubectl get nodes --show-labels
 ```
 
 ```bash
