@@ -88,7 +88,7 @@ cd /root
 git clone https://github.com/qarham/q-crpd-cni.git
 
 # Create KIND Cluster
-cd mac-kind
+cd q-crpd-cni/mac-kind
 kind create cluster --name q-k8s-csr --config 3_nodes_cluster_flannel.yaml
 
 # Check cluster status
