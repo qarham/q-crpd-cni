@@ -17,3 +17,5 @@ nodes:
   image: qarham/kindest-node:v1.19
 - role: worker
   image: qarham/kindest-node:v1.19
+networking:
+  disableDefaultCNI: true # disable kindnet
