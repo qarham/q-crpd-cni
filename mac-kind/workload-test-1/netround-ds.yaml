@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: netrounds-test-agent-application
+  namespace: default
+  labels:
+    k8s-app: netrounds-test-agent-application
+spec:
+  selector:
+    matchLabels:
+      name: netrounds-test-agent-application
+  template:
+    metadata:
+      labels:
+        name: netrounds-test-agent-application
+    spec:
+      tolerations:
+      # this toleration is to have the daemonset runnable on master nodes
+      # remove it if your masters can't run pods
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      containers:
+      - args:
+        - -c
+        - /netrounds-test-agent-application/netrounds-test-agent-application register
+          -n $MY_NODE_NAME -a juniper_k8s -e qarham@juniper.net -p <Password>
+          -s -L DEBUG -H ncc.test.netrounds.com -c /etc/test-agent-application.conf
+          && /netrounds-test-agent-application/netrounds-test-agent-application -c
+          /etc/test-agent-application.conf -L DEBUG
+        command:
+        - /bin/sh
+        env:
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        image: netrounds/test-agent-application
+        imagePullPolicy: Always
+        name: test-agent-application-1
+      terminationGracePeriodSeconds: 30
